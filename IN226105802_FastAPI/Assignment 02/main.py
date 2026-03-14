@@ -201,3 +201,26 @@ def take_order(orders : BulkOrder):
     return {'company':orders.company_name, 'confirmed': confirmed, 'failed': failed, 'grand_total':grand_total}   
     
         
+# Bonus Question
+@app.post('/orders')
+def place_order(product : str, qty : int):
+    order_id = len(orders) + 1
+    ordered = {'id': order_id, 'product': product, 'qty':qty, 'status':'pending'}
+    orders.append(ordered)
+    return {"order": ordered}
+
+@app.get('/orders/{order_id}')
+def get_order(order_id : int):
+    for order in orders:
+        if order_id == order['id']:
+            return{'order':order}
+       
+    return {'error': 'order not found'}
+
+@app.patch('/orders/{order_id}/confirm')
+def confirm_order(order_id :int):
+    for order in orders:
+        if order['id'] == order_id:
+            order['status'] = "confirmed"
+            return {"order": order}
+    return {'error': 'order not found'}
