@@ -12,6 +12,20 @@ class CustomerFeedback(BaseModel):
     
 # Empty List for storing Feedback
 feedback = []
+
+# Empty List for recievening Orders
+orders = []
+ 
+# Pydantic model for OrderItems
+class OrderItem(BaseModel):
+    product_id : int = Field(..., gt=0)
+    quantity : int = Field(..., ge=1, le=50)
+    
+# Pydantic model for Bulk Orders
+class BulkOrder(BaseModel):
+    company_name : str = Field(..., min_length=2)
+    contact_email : str = Field(...,min_length=5)
+    items : list[OrderItem] = Field(..., min_items = 1 )
  
 # ── Temporary data — acting as our database for now ──────────
 products = [
@@ -145,3 +159,45 @@ def get_feedback(customer_feedback : CustomerFeedback):
     
     feedback.append(customer_feedback.model_dump())
     return {'message':"Feedback submitted succcessfully", "feedback": customer_feedback.model_dump(), "total_feedback":len(feedback)}
+
+# Question 4 --> Summary Endpoint
+
+@app.get('/products/summary')
+def get_summary():
+    in_stock_count = sum(1 for p in products if p['in_stock'])
+    out_of_stock_count = len(products) - in_stock_count
+    expensive_product = max(products, key = lambda p : p['price'])
+    most_expensive = {'name' : expensive_product['name'], 'price': expensive_product['price']}
+    cheapest = min(products, key = lambda p : p['price'])
+    most_cheapest = {'name' : expensive_product['name'], 'price': expensive_product['price']}
+    categories = list(set(p['category'] for p in products))
+    return {'total_products': len(products), 'in_stock_count':in_stock_count, 'out_of_stock_count':out_of_stock_count, 'most_expensive': most_expensive, 'cheapest': most_cheapest,"categories":categories}
+    
+#  Question 5 --> Take Orders
+@app.post('/orders/bulk')
+def take_order(orders : BulkOrder):
+    confirmed = []
+    failed = []
+    grand_total = 0
+    
+    for item in orders.items:
+        product = None
+        for p in products:
+            if p['id'] == item.product_id:
+                product = p
+                break
+    
+        if product is None:
+            failed.append({'product_id': item.product_id, 'reason': 'product not found'})
+            continue
+        elif not product['in_stock']:
+            failed.append({'product_id': item.product_id, 'reason': f"{product['name']} out of stock"})
+            continue
+        else:
+            subtotal = product['price']*item.quantity
+            confirmed.append({'product':product['name'], 'qty': item.quantity, 'subtotal': subtotal})
+            grand_total += subtotal
+            
+    return {'company':orders.company_name, 'confirmed': confirmed, 'failed': failed, 'grand_total':grand_total}   
+    
+        
