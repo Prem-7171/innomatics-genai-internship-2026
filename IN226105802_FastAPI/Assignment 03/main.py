@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException, status, Response
 from pydantic import BaseModel, Field
  
 app = FastAPI()
@@ -152,7 +152,7 @@ def get_price(product_id: int):
             return {'name': product['name'], 'price':product['price']}
     return {'error': 'Product not found'}
 
-# Question 3 --> Recieve Feedback
+
 
 @app.post('/feedback')
 def get_feedback(customer_feedback : CustomerFeedback):
@@ -160,7 +160,6 @@ def get_feedback(customer_feedback : CustomerFeedback):
     feedback.append(customer_feedback.model_dump())
     return {'message':"Feedback submitted succcessfully", "feedback": customer_feedback.model_dump(), "total_feedback":len(feedback)}
 
-# Question 4 --> Summary Endpoint
 
 @app.get('/products/summary')
 def get_summary():
@@ -173,7 +172,6 @@ def get_summary():
     categories = list(set(p['category'] for p in products))
     return {'total_products': len(products), 'in_stock_count':in_stock_count, 'out_of_stock_count':out_of_stock_count, 'most_expensive': most_expensive, 'cheapest': most_cheapest,"categories":categories}
     
-#  Question 5 --> 
 @app.post('/orders/bulk')
 def take_order(orders : BulkOrder):
     confirmed = []
@@ -187,9 +185,65 @@ def take_order(orders : BulkOrder):
                 product = p
                 break
     
-    if product is None:
-        failed.append({'product_id': item.product_id, 'reason': 'product not found'})
+        if product is None:
+            failed.append({'product_id': item.product_id, 'reason': 'product not found'})
+            continue
+        elif not product['in_stock']:
+            failed.append({'product_id': item.product_id, 'reason': f"{product['name']} out of stock"})
+            continue
+        else:
+            subtotal = product['price']*item.quantity
+            confirmed.append({'product':product['name'], 'qty': item.quantity, 'subtotal': subtotal})
+            grand_total += subtotal
             
-    return {'company': order['company_name']}   
+    return {'company':orders.company_name, 'confirmed': confirmed, 'failed': failed, 'grand_total':grand_total}   
     
         
+@app.post('/orders')
+def place_order(product : str, qty : int):
+    order_id = len(orders) + 1
+    ordered = {'id': order_id, 'product': product, 'qty':qty, 'status':'pending'}
+    orders.append(ordered)
+    return {"order": ordered}
+
+@app.get('/orders/{order_id}')
+def get_order(order_id : int):
+    for order in orders:
+        if order_id == order['id']:
+            return{'order':order}
+       
+    return {'error': 'order not found'}
+
+@app.patch('/orders/{order_id}/confirm')
+def confirm_order(order_id :int):
+    for order in orders:
+        if order['id'] == order_id:
+            order['status'] = "confirmed"
+            return {"order": order}
+    return {'error': 'order not found'}
+
+
+# Assignment 3
+
+# Question 1
+@app.post('/products')
+def add_product(name : str,
+                price: int,
+                category : str,
+                in_stock : bool,
+                response : Response):
+    for p in products:
+        if name.lower() == p['name'].lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Product with this name already exists"
+                )
+    
+    id = len(products) + 1
+    new_product = {'id': id, 'name': name, 'price':  price,  'category': category,  'in_stock': in_stock }
+    products.append(new_product)
+        
+        
+    response.status_code = status.HTTP_201_CREATED
+    return {'message': 'product added', 'product' : new_product}
+    
