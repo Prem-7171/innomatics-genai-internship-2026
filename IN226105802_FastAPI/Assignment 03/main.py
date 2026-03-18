@@ -38,7 +38,7 @@ products = [
     {'id': 7, 'name': 'Normal Keyboard',          'price':  1300, 'category': 'Electronics',  'in_stock': True },
     {'id': 8, 'name': 'Webcam',          'price':  599, 'category': 'Electronics',  'in_stock': True },
 ]
- 
+
 # ── Endpoint 0 — Home ────────────────────────────────────────
 @app.get('/')
 def home():
@@ -247,3 +247,79 @@ def add_product(name : str,
     response.status_code = status.HTTP_201_CREATED
     return {'message': 'product added', 'product' : new_product}
     
+    
+# Question 2
+@app.put('/products/{product_id}')
+def update_product(
+    product_id : int,
+    in_stock : bool | None = None,
+    price : int | None = None
+    ):
+    
+    for p in products:
+        if p['id'] == product_id:
+            
+            if in_stock is not None:
+                p['in_stock'] = in_stock
+                
+            if price is not None:
+                p['price'] = price
+                
+            return p    
+
+    
+    raise HTTPException(
+        status_code=404,
+        detail= "product not found"
+    )
+    
+
+# Question 3
+@app.delete('/products/{product_id}')
+def delete_product(product_id : int):
+    for p in products:
+        if p['id'] == product_id:
+            products.remove(p)
+            return {"message" : f"product {p['name']} deleted"}
+    
+    raise HTTPException(
+        status_code=404,
+        detail="product id was never in the list"
+    )
+    
+# Question 4
+# Operations performed on swagger ui and uploaded Screenshots of the output
+
+# Question 5
+@app.get('/products/audit')
+def get_audit():
+    total_products = len(products)
+    in_stock_count = sum(1 for p in products if p['in_stock'])
+    out_of_stock_count = len(products) - in_stock_count
+    out_of_stock_names = [p['name'] for p in products if not p['in_stock']]
+    total_stock_value = sum(p['price'] for p in products if p['in_stock'])*10
+    most_expensive = max(products, key = lambda p : p['price'] )
+    most_expensive = {"name": most_expensive['name'], "price":most_expensive['price']}
+    
+    return { "total_products": total_products, "in_stock_count": in_stock_count, "out_of_stock_names": out_of_stock_names, "total_stock_value": total_stock_value, "most_expensive": most_expensive}
+
+# Bonus Question
+@app.put('/product/dicount')
+def get_discount(category : str, discount_percent : int):
+    update_count = 0
+    updated_products = []
+    
+    for p in products:
+        
+        if p['category'].lower() == category.lower():
+            p['price'] = int(p['price']*(1 - discount_percent / 100))
+            update_count += 1
+            updated = {"name": p['name'], "price":p['price']}
+            updated_products.append(updated)
+            
+    
+    if update_count == 0 :
+        return {"message":"No products found in this category"}
+            
+                    
+    return {"updated products": update_count, "products":updated_products}  
