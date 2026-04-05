@@ -1,0 +1,479 @@
+from fastapi import FastAPI, Query, HTTPException, status, Response
+from pydantic import BaseModel, Field
+ 
+app = FastAPI()
+
+# Class For pydantic Model
+class CustomerFeedback(BaseModel):
+    customer_name : str = Field(..., min_length = 2)
+    product_id : int = Field(..., gt=0)
+    rating : int = Field(..., ge=1, le=5)
+    comment : str | None = Field(None, max_length=300)
+    
+# Class For checkout pydantic model
+class CheckoutRequest(BaseModel):
+    customer_name : str
+    delivery_address : str
+
+# Empty List for storing Feedback
+feedback = []
+
+# Empty List for recievening Orders
+orders = []
+ 
+# Empty List for adding items to cart
+cart = []
+
+# Order Counter
+order_counter = 1
+
+
+# Pydantic model for OrderItems
+class OrderItem(BaseModel):
+    product_id : int = Field(..., gt=0)
+    quantity : int = Field(..., ge=1, le=50)
+    
+# Pydantic model for Bulk Orders
+class BulkOrder(BaseModel):
+    company_name : str = Field(..., min_length=2)
+    contact_email : str = Field(...,min_length=5)
+    items : list[OrderItem] = Field(..., min_items = 1 )
+ 
+# ── Temporary data — acting as our database for now ──────────
+products = [
+    {'id': 1, 'name': 'Wireless Mouse', 'price': 499,  'category': 'Electronics', 'in_stock': True },
+    {'id': 2, 'name': 'Notebook',       'price':  99,  'category': 'Stationery',  'in_stock': True },
+    {'id': 3, 'name': 'USB Hub',         'price': 799, 'category': 'Electronics', 'in_stock': False},
+    {'id': 4, 'name': 'Pen Set',          'price':  49, 'category': 'Stationery',  'in_stock': True },
+    {'id': 5, 'name': 'Laptop Stand',      'price':  399, 'category': 'Accessories',  'in_stock': False },
+    {'id': 6, 'name': 'Mechanical Keyboard',          'price':  1300, 'category': 'Electronics',  'in_stock': True },
+    {'id': 7, 'name': 'Normal Keyboard',          'price':  1300, 'category': 'Electronics',  'in_stock': True },
+    {'id': 8, 'name': 'Webcam',          'price':  599, 'category': 'Electronics',  'in_stock': True },
+]
+
+# ── Endpoint 0 — Home ────────────────────────────────────────
+@app.get('/')
+def home():
+    return {'message': 'Welcome to our E-commerce API'}
+ 
+# ── Endpoint 1 — Return all products ──────────────────────────
+@app.get('/products')
+def get_all_products():
+    return {'products': products, 'total': len(products)}
+
+# Filtering
+@app.get('/products/filter')
+def filter_products(
+    category:  str  = Query(None, description='Electronics or Stationery'),
+    max_price: int  = Query(None, description='Maximum price'),
+    in_stock:  bool = Query(None, description='True = in stock only'),
+    min_price: int = Query(None, description='Minimum Price ')
+):
+    result = products          # start with all products
+ 
+    if category:
+        result = [p for p in result if p['category'] == category]
+ 
+    if max_price:
+        result = [p for p in result if p['price'] <= max_price]
+ 
+    if in_stock is not None:
+        result = [p for p in result if p['in_stock'] == in_stock]
+        
+    # Question 1 min Price    
+    if min_price:
+        result = [p for p in products if p['price'] >= min_price]
+ 
+    return {'filtered_products': result, 'count': len(result)}
+ 
+# ── Endpoint 2 — Return one product by its ID ──────────────────
+@app.get('/products/product_id/{product_id}')
+def get_product(product_id: int):
+    for product in products:
+        if product['id'] == product_id:
+            return {'product': product}
+    return {'error': 'Product not found'}
+
+
+@app.get('/products/category/{category}')
+def get_category(category):
+    matching_products = []
+    for product in products:
+        if product['category'] == category:
+            matching_products.append(product)
+    
+    if matching_products:
+        return {'Products':matching_products, 'total':len(matching_products)}
+    else:
+        return {'error':'Product not found'}
+    
+# ______________________________ Day 6 _____________________________________#
+
+# Searching 
+@app.get('/search/{keyword}')
+def search_word(keyword : str):
+    
+    results = [p for p in products if keyword.lower() in p['name'].lower()]
+    
+    if not results:
+        return {'message': 'No Product Found', 'results':[]}
+    
+    return {'keyword':keyword, 'total_found':len(results), 'results':results}
+    
+# Sorting
+@app.get('/products/sort')
+def sort_products(sort_by: str = 'price', order: str = 'asc'):
+    
+    if sort_by not in ["price", "name"]:
+        return {'error': 'sort_by must be price or name'}
+    
+    if order not in ["asc", "desc"]:
+        return {'error': 'order must be asc or desc'}
+    
+    reverse = (order == "desc")
+    
+    sorted_products = sorted(products, key=lambda p: p[sort_by], reverse=reverse)
+    
+    return {
+        'sort_by': sort_by,
+        'order': order,
+        'products': sorted_products
+    }
+        
+# Pagination
+@app.get('/products/page')
+def get_products_paged(page: int = 1, limit: int = 2):
+    
+    start = (page - 1) * limit
+    end = start + limit
+    
+    paginated_products = products[start:end]
+    
+    total_pages = -(-len(products) // limit)
+    
+    return {
+        'page': page,
+        'limit': limit,
+        'total': len(products),
+        'total_pages': total_pages,
+        'products': paginated_products
+    }
+
+# _____________________________________________________________________________________________
+@app.get('/products/instock/')  
+def get_instock():
+    in_stock = []
+    count = 0
+    for p in products:
+        if p['in_stock']:
+            in_stock.append(p)
+            count += 1
+    
+    if in_stock:
+        return {'in_stock_products':in_stock, 'count':count}
+    else:
+        return {'error':'Nothing in stock'}
+    
+
+@app.get('/store/summary')
+def get_summary():
+    total_products = len(products)
+    stock_count = sum(1 for product in products if product['in_stock'])
+    no_stock_count = len(products) - stock_count
+    
+    categories = [p['category'] for p in products ]
+    categories = set(categories)
+    categories = list(categories)
+    
+    return {"store_name": "My E-commerce Store", "total_products": total_products, "in_stock": stock_count, "out_of_stock": no_stock_count, "categories":categories}
+        
+        
+
+@app.get('/products/search/{keyword}')
+def search(keyword):
+    product_found =[product for product in products if keyword.lower() in product['name'].lower()]
+    
+    if product_found:
+        return {"matched_products": product_found, "total_products_found": len(product_found)}
+    else:
+        return {"message": "No products matched your search"}
+            
+            
+
+@app.get('/products/deals')
+def get_deals():
+    best_deals = min(products, key = lambda p: p['price'])
+    expensive_deals = max(products, key = lambda p: p['price'])
+    
+    return {"best_deal":best_deals, "premium_pick": expensive_deals}
+
+# Question 2 --> Getting only name and price of product
+@app.get('/products/{product_id}/price')
+def get_price(product_id: int):
+    for product in products:
+        if product['id'] == product_id:
+            return {'name': product['name'], 'price':product['price']}
+    return {'error': 'Product not found'}
+
+
+
+@app.post('/feedback')
+def get_feedback(customer_feedback : CustomerFeedback):
+    
+    feedback.append(customer_feedback.model_dump())
+    return {'message':"Feedback submitted succcessfully", "feedback": customer_feedback.model_dump(), "total_feedback":len(feedback)}
+
+
+@app.get('/products/summary')
+def get_summary():
+    in_stock_count = sum(1 for p in products if p['in_stock'])
+    out_of_stock_count = len(products) - in_stock_count
+    expensive_product = max(products, key = lambda p : p['price'])
+    most_expensive = {'name' : expensive_product['name'], 'price': expensive_product['price']}
+    cheapest = min(products, key = lambda p : p['price'])
+    most_cheapest = {'name' : expensive_product['name'], 'price': expensive_product['price']}
+    categories = list(set(p['category'] for p in products))
+    return {'total_products': len(products), 'in_stock_count':in_stock_count, 'out_of_stock_count':out_of_stock_count, 'most_expensive': most_expensive, 'cheapest': most_cheapest,"categories":categories}
+    
+@app.post('/orders/bulk')
+def take_order(orders : BulkOrder):
+    confirmed = []
+    failed = []
+    grand_total = 0
+    
+    for item in orders.items:
+        product = None
+        for p in products:
+            if p['id'] == item.product_id:
+                product = p
+                break
+    
+        if product is None:
+            failed.append({'product_id': item.product_id, 'reason': 'product not found'})
+            continue
+        elif not product['in_stock']:
+            failed.append({'product_id': item.product_id, 'reason': f"{product['name']} out of stock"})
+            continue
+        else:
+            subtotal = product['price']*item.quantity
+            confirmed.append({'product':product['name'], 'qty': item.quantity, 'subtotal': subtotal})
+            grand_total += subtotal
+            
+    return {'company':orders.company_name, 'confirmed': confirmed, 'failed': failed, 'grand_total':grand_total}   
+    
+@app.get('/orders')
+def get_all_orders():
+    return {'orders': orders, 'total_orders': len(orders)}
+        
+@app.post('/orders')
+def place_order(product : str, qty : int):
+    order_id = len(orders) + 1
+    ordered = {'id': order_id, 'product': product, 'qty':qty, 'status':'pending'}
+    orders.append(ordered)
+    return {"order": ordered}
+
+@app.get('/orders/{order_id}')
+def get_order(order_id : int):
+    for order in orders:
+        if order_id == order['id']:
+            return{'order':order}
+       
+    return {'error': 'order not found'}
+
+@app.patch('/orders/{order_id}/confirm')
+def confirm_order(order_id :int):
+    for order in orders:
+        if order['id'] == order_id:
+            order['status'] = "confirmed"
+            return {"order": order}
+    return {'error': 'order not found'}
+
+
+# Assignment 3
+
+# Question 1
+@app.post('/products')
+def add_product(name : str,
+                price: int,
+                category : str,
+                in_stock : bool,
+                response : Response):
+    for p in products:
+        if name.lower() == p['name'].lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Product with this name already exists"
+                )
+    
+    id = len(products) + 1
+    new_product = {'id': id, 'name': name, 'price':  price,  'category': category,  'in_stock': in_stock }
+    products.append(new_product)
+        
+        
+    response.status_code = status.HTTP_201_CREATED
+    return {'message': 'product added', 'product' : new_product}
+    
+    
+# Question 2
+@app.put('/products/{product_id}')
+def update_product(
+    product_id : int,
+    in_stock : bool | None = None,
+    price : int | None = None
+    ):
+    
+    for p in products:
+        if p['id'] == product_id:
+            
+            if in_stock is not None:
+                p['in_stock'] = in_stock
+                
+            if price is not None:
+                p['price'] = price
+                
+            return p    
+
+    
+    raise HTTPException(
+        status_code=404,
+        detail= "product not found"
+    )
+    
+
+# Question 3
+@app.delete('/products/{product_id}')
+def delete_product(product_id : int):
+    for p in products:
+        if p['id'] == product_id:
+            products.remove(p)
+            return {"message" : f"product {p['name']} deleted"}
+    
+    raise HTTPException(
+        status_code=404,
+        detail="product id was never in the list"
+    )
+    
+# Question 4
+# Operations performed on swagger ui and uploaded Screenshots of the output
+
+# Question 5
+@app.get('/products/audit')
+def get_audit():
+    total_products = len(products)
+    in_stock_count = sum(1 for p in products if p['in_stock'])
+    out_of_stock_count = len(products) - in_stock_count
+    out_of_stock_names = [p['name'] for p in products if not p['in_stock']]
+    total_stock_value = sum(p['price'] for p in products if p['in_stock'])*10
+    most_expensive = max(products, key = lambda p : p['price'] )
+    most_expensive = {"name": most_expensive['name'], "price":most_expensive['price']}
+    
+    return { "total_products": total_products, "in_stock_count": in_stock_count, "out_of_stock_names": out_of_stock_names, "total_stock_value": total_stock_value, "most_expensive": most_expensive}
+
+# Bonus Question
+@app.put('/product/dicount')
+def get_discount(category : str, discount_percent : int):
+    update_count = 0
+    updated_products = []
+    
+    for p in products:
+        
+        if p['category'].lower() == category.lower():
+            p['price'] = int(p['price']*(1 - discount_percent / 100))
+            update_count += 1
+            updated = {"name": p['name'], "price":p['price']}
+            updated_products.append(updated)
+            
+    
+    if update_count == 0 :
+        return {"message":"No products found in this category"}
+            
+               
+    return {"updated products": update_count, "products":updated_products}  
+
+
+
+# Cart
+@app.post('/cart/add')
+def add_to_cart(product_id : int, quantity : int):
+    for p in products:
+        if product_id == p['id']:
+            product = p
+            
+    if not product :
+        return {"error": "Product not found"}
+    if not product['in_stock']:
+        return {"error": f"Product {product['name']} is out of the stock"}
+    for item in cart:
+        if product_id == item['product_id']:
+            item['quantity'] += quantity
+            item['subtotal'] =  product['price']*item['quantity']
+            return {"message":"cart updated", "cart_items":item}
+    cart_item = {
+        'product_id':   product_id,
+        'product_name': product['name'],
+        'quantity':     quantity,
+        'unit_price':   product['price'],
+        'subtotal':     product['price']*quantity
+    }
+    cart.append(cart_item)
+    return {"message": "Added to cart", "cart_item": cart_item}
+
+@app.get('/cart')
+def view_cart():
+    if not cart:
+        return {"message":'cart is empty', 'items': [], 'grand_total':0}
+    
+    return {
+        'items': cart,
+        'total' : len(cart),
+        'grand_total' : sum(i['subtotal'] for i in cart)
+    }
+    
+    
+@app.delete('/cart/{product_id}')
+def delete_from_cart( product_id : int):
+    for item in cart:
+        if product_id == item['product_id']:
+            cart.remove(item)
+            return {'message': f"{item['product_name']} removed from the cart."}
+    raise HTTPException(
+        status_code = 404,
+        detail = "product not in cart"
+    )
+    
+
+@app.post('/cart/checkout')
+def cart_checkout(checkout : CheckoutRequest, response : Response):
+    global order_counter
+    
+    if not cart:
+        raise HTTPException (
+            status_code = 400,
+            detail="Cart is empty"
+        )
+        
+    placed_orders = []
+    grand_total = 0
+    
+    for item in cart:
+        order = {
+            'order_id':order_counter,
+            'customer_name': checkout.customer_name,
+            'product': item['product_name'],
+            'quantity': item['quantity'],
+            'delivery_address': checkout.delivery_address,
+            'total_price':item['subtotal'],
+            'status': 'confirmed'
+        }
+        
+        orders.append(order)
+        placed_orders.append(order)
+        
+        grand_total += item['subtotal']
+        order_counter += 1
+        
+    cart.clear()
+    
+    response.status_code = status.HTTP_201_CREATED
+    
+    return {'message':'checkout successful', 'order_placed': placed_orders, 'grand_total':grand_total}
