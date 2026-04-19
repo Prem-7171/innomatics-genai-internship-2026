@@ -272,6 +272,57 @@ def place_order(product : str, qty : int):
     orders.append(ordered)
     return {"order": ordered}
 
+# ____________________Assignment 5__________________________
+@app.get('/orders/search')
+def search_orders(customer_name: str):
+    
+    results = [
+        o for o in orders
+        if customer_name.lower() in o['customer_name'].lower()
+    ]
+    
+    if not results:
+        return {"message": "No orders found for this customer"}
+    
+    return {
+        "customer_name": customer_name,
+        "total_found": len(results),
+        "orders": results
+    }
+
+# Sort by category first
+@app.get('/products/sort-by-category')
+def sort_by_category():
+    
+    sorted_products = sorted(
+        products,
+        key=lambda p: (p['category'], p['price'])
+    )
+    
+    return {
+        "products": sorted_products
+    }    
+    
+# Bonus  
+@app.get('/orders/page')
+def get_orders_paged(page: int = 1, limit: int = 3):
+    
+    start = (page - 1) * limit
+    end = start + limit
+    
+    paged_orders = orders[start:end]
+    
+    total_pages = -(-len(orders) // limit)
+    
+    return {
+        "page": page,
+        "limit": limit,
+        "total": len(orders),
+        "total_pages": total_pages,
+        "orders": paged_orders
+    }
+
+
 @app.get('/orders/{order_id}')
 def get_order(order_id : int):
     for order in orders:
@@ -338,6 +389,7 @@ def update_product(
         status_code=404,
         detail= "product not found"
     )
+    
     
 
 # Question 3
@@ -477,3 +529,56 @@ def cart_checkout(checkout : CheckoutRequest, response : Response):
     response.status_code = status.HTTP_201_CREATED
     
     return {'message':'checkout successful', 'order_placed': placed_orders, 'grand_total':grand_total}
+
+
+# ____________________Assignment 5______________________#
+
+@app.get('/products/browse')
+def browse_products(
+    keyword : str = None,
+    sort_by : str = 'price',
+    order : str = 'asc',
+    page : int = 1,
+    limit : int = 4
+):
+    
+    result = products
+    
+    if keyword:
+        result = [
+            p for p in result
+            if keyword.lower() in p['name'].lower()
+        ]
+        
+    if sort_by not in ['price', 'name']:
+        return {'error': "sort_by must be 'price' or 'name'"}
+    
+    if order not in ['asc', 'desc']:
+        return {'error': "order must be 'asc' or 'desc'"}
+    
+    reverse = (order == 'desc')
+    
+    result = sorted(result, key=lambda p: p[sort_by], reverse=reverse)
+
+    
+    total_found = len(result)
+    
+    start = (page - 1) * limit
+    end = start + limit
+    
+    paginated = result[start:end]
+    
+    total_pages = -(-total_found // limit)
+
+
+    return {
+        "keyword": keyword,
+        "sort_by": sort_by,
+        "order": order,
+        "page": page,
+        "limit": limit,
+        "total_found": total_found,
+        "total_pages": total_pages,
+        "products": paginated
+    }
+    
