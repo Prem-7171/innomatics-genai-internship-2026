@@ -151,20 +151,21 @@ Evaluated using:
 You can test the model on custom input:
 
 ```python
-def predict_sentiment(text):
+def sentiment_analizer(text):
     clean_text = preprocess_text(text)
     vector = tfidf.transform([clean_text])
     prediction = model.predict(vector)
-    return prediction[0]
+    print("Review : ", text)
+    print("Sentiment : ",prediction)
 ```
 
 ### Example:
 
 ```python
-print(predict_sentiment("This movie was amazing!"))
+sentiment_analizer("This movie was amazing!")
 # Output: positive
 
-print(predict_sentiment("Worst movie ever"))
+sentiment_analizer("Worst movie ever")
 # Output: negative
 ```
 
