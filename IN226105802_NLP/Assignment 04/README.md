@@ -144,7 +144,7 @@ pip install transformers torch scikit-learn pandas numpy matplotlib seaborn data
 
 ## 🙋‍♂️ Author
 
-**Prem Vispute**
+**Prem Palkar**
 - B.Tech CSE (AI & ML) | Aspiring AI Researcher
 - [LinkedIn](https://www.linkedin.com/in/prem-palkar-7a6b23297/)
 - [GitHub](https://github.com/Prem-7171)
